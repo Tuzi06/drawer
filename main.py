@@ -1,66 +1,69 @@
 import cv2
 import numpy as np
 import pandas as pd
-import threading
 from PIL import Image,ImageDraw,ImageFont
-import time
 
-def process(img,i):
-    # img = cv2.resize(img,(160,120))
+def process(img):
+    c = 10
+    hs = 1.23
+    if img is None: return None
+    img = cv2.resize(img,(len(img[0])//c,len(img)//c))
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     med_val = np.median(gray) 
     (thresh, baw) = cv2.threshold(gray, med_val, 255, cv2.THRESH_BINARY)
     med_val = np.median(baw) 
-    lower = int(max(0 ,0.7*med_val))
-    upper = int(min(255,1.3*med_val))
+    lower = int(max(0 ,0.7*thresh))
+    upper = int(min(255,1.3*thresh))
     edge = cv2.Canny(baw,lower,upper)
-    df = pd.DataFrame(edge)
-    width = 15
-    height = 15
-    output = Image.new('L',(width*len(df.columns),height*len(df)),color = (0))
-    d = ImageDraw.Draw(output)
-    fnt = ImageFont.truetype('./data/ARIBL0.ttf',15)
-    for i in range(len(df)+1):
-        for j in range(len(df.columns)+1):
-            if i<len(df) and j<len(df.columns) and edge[i][j] == 255:
-                s = '@'
-            else:
-                s = ' '
-            d.text((j*width,i*height),s,font = fnt,fill = (255))
-    # output = output.resize((1280,720))
-    return output
-    output.save('./data/res/res-%i.jpg'%i)
-    print('finish ',i)
-    
+    # edge =(255-edge)
+    # output = Image.fromarray(edge)
+    # return output
 
-def out(i):
-    out = cv2.VideoWriter('output.avi',cv2.VideoWriter_fourcc(*'DIVX'),30, (1280,720))
+    df = pd.DataFrame(edge)
+    output = Image.new('RGB',(c*(len(df.columns)),int(c*hs)*(len(df))),color = (0,0,0))
+    d = ImageDraw.Draw(output)
+    fnt = ImageFont.truetype('./data/ARIBL0.ttf',c)
+    o = ''
+    ch = ['- ','@']
+    for i in range(len(df)):
+        for j in range(len(df.columns)):
+            o+=(ch[edge[i][j]//255]+' ')
+        o+='\n'
+    d.multiline_text((0,0),o,font = fnt,fill=(255,255,255),spacing = 0,)
+    return output
+
+def out(frames,i):
+    fs = (1920,1080)
+    out = cv2.VideoWriter('output.mp4',cv2.VideoWriter_fourcc(*'mp4v'),30, fs)
     for j in range(i):
-        source = cv2.imread('./data/res/res-%i.png'%j)
-        source = cv2.resize(source,(1280,720))
-        cv2.imshow('asf',source)
+        source = cv2.resize(frames[j],fs)
+        # cv2.imshow('asf',source)
         cv2.waitKey(1)
         out.write(source)
         print(j)
     out.release()
 
+import time
+
 def main():
-    cap = cv2.VideoCapture('./data/vergill.mp4')
+    start =  time.perf_counter()
+    cap = cv2.VideoCapture('./data/vergill4.mp4')
     i=0
-    threads = []
+    frames = []
+    print('start')
     while(cap.isOpened()):
         ret,frame =cap.read()
-        # threads.append(threading.Thread(target=process, args= (frame,i)))
-        newFrame = process(frame,i)
-        newFrame.save('./data/res/res-%i.png'%i)
+        newFrame = process(frame)
+        if newFrame is None or i>=0:
+            break
+        newFrame = np.asarray(newFrame)
+        # newFrame = cv2.cvtColor(newFrame,cv2.COLOR_GRAY2BGR)
+        frames.append(newFrame)
         print('finish ',i)
-        # threads[-1].start()
         i+=1
-    # input('fffff')
-    # for thread in threads:
-    #     thread.join()
-    out(i)
+    out(frames,i)
+    end =  time.perf_counter()
+    print(end-start)
 
 if __name__ =='__main__':
     main()
-    # out(1750)
