@@ -1,14 +1,14 @@
 import cv2
 import numpy as np
-import webp
-from PIL import Image,ImageDraw,ImageFont,ImageEnhance
+from PIL import Image,ImageDraw,ImageFont
+from numba import jit
+import time
 
-c = 10
+c = 11
 fnt = ImageFont.truetype('./data/ARIBL0.ttf',c)
 chl = list('$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\^`.54')
 fs = (1920,1080)
-
-def preRender(chl,c):
+def preRender():
     trans = []
     for ch in chl:
         out = Image.new('L',(c,c),color = (0))
@@ -16,34 +16,29 @@ def preRender(chl,c):
         d.text((0,-2),ch,font = fnt, fill = (255))
         o = np.asarray(out)
         trans.append(o)
+    trans = tuple(trans)
     return trans
 
+@jit(target_backend='cuda')
 def process (img,chs):
     imgShape = img.shape
-    if(imgShape[1],imgShape[0])!= fs:
-        img = cv2.resize(img,fs)
-        imgShape = img.shape
-    imgr = cv2.resize(img,(imgShape[1]//c,imgShape[0]//c))
-    imgrShape = imgr.shape
-    output = cv2.resize(imgr,fs)
-    Mask = np.zeros((imgShape[0],imgShape[1])) #1920x1080
-    for i in range(imgrShape[0]):
-        for j in range(imgrShape[1]):
+    imgr =  cv2.GaussianBlur(img, (c,c), 0)
+    Mask = np.zeros((imgShape[0],imgShape[1]),dtype = np.uint8) #1920x1080
+    width = imgShape[0]//c
+    height = imgShape[1]//c
+    for i in range(width):
+        for j in range(height):
             color = imgr[i][j] # 3x1
             index = int(np.mean(color)%len(chs))
             Mask[i*c:(i+1)*c,j*c:(j+1)*c] = chs[index]
-    Mask = Mask.astype(np.uint8)
-    output = output.astype(np.uint8)
-    print(Mask.shape)
-    print(output.shape)
-    output = cv2.bitwise_and(output,output,mask = Mask)
+
+    output = cv2.bitwise_and(imgr,imgr,mask = Mask)
     return output
 
 def out(frames,i):
     out = cv2.VideoWriter('output720.mp4',cv2.VideoWriter_fourcc(*'mp4v'),30, fs)
     for j in range(i):
         source = cv2.resize(frames[j],fs)
-        # cv2.imshow('asf',source)
         cv2.waitKey(1)
         out.write(source)
         print(j)
@@ -51,10 +46,12 @@ def out(frames,i):
 
 def main():
     cap = cv2.VideoCapture('./data/vergill4.mp4')
-    chs = preRender(chl,c)
+    chs = preRender()
     i=0
     frames = []
+
     print('start')
+    start = time.perf_counter()
     while(cap.isOpened()):
         ret,frame =cap.read()
         if not ret:
@@ -63,9 +60,11 @@ def main():
         frames.append(newFrame)
         print('finish ',i)
         i+=1
+    end = time.perf_counter()
     print('finish render')
-    print(frames[0])
-    out(frames,i)
+    print(end-start)
+    input('pause')
+    out(newFrame,i)
 
 if __name__ =='__main__':
     main()
